@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FleetWatch | AWS EC2, ASG & ALB Cloud Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app-container">
+    <!-- TOP NAVIGATION BAR -->
+    <header class="top-bar">
+      <div class="brand-section">
+        <div class="brand-logo">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="brand-icon">
+            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
+            <path d="M12 12v6"/>
+            <path d="m15 15-3-3-3 3"/>
+          </svg>
+          <h1 class="brand-title">Fleet<span>Watch</span></h1>
+        </div>
+        <span class="badge badge-aws">AWS EC2 + ASG + ALB Simulation</span>
+        <span class="badge badge-plus">FleetWatch+ Active</span>
+      </div>
+
+      <div class="top-metrics">
+        <div class="metric-pill" title="Simulated Cumulative Fleet Cost">
+          <span class="metric-label">FLEET COST</span>
+          <span class="metric-value font-mono" id="metric-total-cost">$0.0000</span>
+        </div>
+        <div class="metric-pill" title="Current Inbound Requests Per Second">
+          <span class="metric-label">INBOUND RPS</span>
+          <span class="metric-value font-mono" id="metric-inbound-rps">300</span>
+        </div>
+        <div class="metric-pill" title="Total Capacity Across Running Instances">
+          <span class="metric-label">TOTAL CAPACITY</span>
+          <span class="metric-value font-mono" id="metric-fleet-capacity">300 RPS</span>
+        </div>
+        <div class="metric-pill metric-danger" title="Cumulative Dropped Requests (HTTP 503)">
+          <span class="metric-label">DROPPED (503)</span>
+          <span class="metric-value font-mono" id="metric-total-dropped">0</span>
+        </div>
+        <div class="metric-pill" title="Healthy Running Instances / Target">
+          <span class="metric-label">HEALTHY HOSTS</span>
+          <span class="metric-value font-mono" id="metric-healthy-hosts">3 / 3</span>
+        </div>
+      </div>
+
+      <div class="top-actions">
+        <div class="speed-control-group" role="group" aria-label="Simulation Speed">
+          <button class="speed-btn active" data-speed="1" title="Realtime 1x">1x</button>
+          <button class="speed-btn" data-speed="5" title="Fast 5x">5x</button>
+          <button class="speed-btn" data-speed="10" title="Turbo 10x">10x</button>
+          <button class="speed-btn icon-btn" id="btn-pause-sim" title="Pause / Resume Simulation">⏸</button>
+        </div>
+
+        <button class="btn btn-outline" id="btn-toggle-race" title="Enable Policy Race Mode">
+          <span class="icon">🏁</span> Policy Race
+        </button>
+
+        <button class="btn btn-outline" id="btn-toggle-record" title="Record and Replay Traffic Scenarios">
+          <span class="icon">⏺</span> Record/Replay
+        </button>
+
+        <button class="btn btn-accent" id="btn-open-drawer" title="View Cloud Architecture Explanations">
+          <span class="icon">📖</span> EC2 vs FleetWatch
+        </button>
+
+        <button class="btn btn-ghost icon-btn" id="btn-reset-sim" title="Reset Simulation State">
+          🔄
+        </button>
+      </div>
+    </header>
+
+    <!-- REPLAY / RECORDING STATUS BAR (Conditional) -->
+    <div id="recorder-bar" class="recorder-bar hidden">
+      <div class="recorder-status">
+        <span class="rec-dot" id="rec-indicator"></span>
+        <span id="rec-status-text" class="font-mono">RECORDER IDLE</span>
+        <span id="rec-timer" class="font-mono text-muted">00:00</span>
+      </div>
+      <div class="recorder-actions">
+        <button class="btn btn-sm btn-danger" id="btn-rec-start">Start Recording</button>
+        <button class="btn btn-sm btn-outline" id="btn-rec-stop" disabled>Stop</button>
+        <button class="btn btn-sm btn-accent" id="btn-rec-play" disabled>Replay Scenario</button>
+        <button class="btn btn-sm btn-ghost" id="btn-rec-save">Export JSON</button>
+        <label class="btn btn-sm btn-ghost file-label">
+          Import JSON <input type="file" id="rec-file-input" accept=".json" style="display:none;">
+        </label>
+      </div>
+    </div>
+
+    <!-- MAIN DASHBOARD CONTENT -->
+    <main class="dashboard-layout" id="main-layout">
+      <!-- LEFT CONTROL PANEL: ASG & TRAFFIC GENERATOR -->
+      <aside class="panel control-panel">
+        <div class="panel-header">
+          <h2>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            Auto Scaling Group (ASG)
+          </h2>
+          <span class="badge badge-teal" id="asg-status-badge">In Sync</span>
+        </div>
+
+        <!-- Launch Template Section -->
+        <section class="config-section">
+          <div class="section-title">Launch Template: <span class="text-accent" id="lt-name">lt-fleetwatch-v1</span></div>
+          <div class="form-group">
+            <label for="select-instance-type">Instance Type & Capacity</label>
+            <select id="select-instance-type" class="form-select">
+              <option value="t3.micro">t3.micro (50 RPS | $0.0104/hr)</option>
+              <option value="t3.small" selected>t3.small (100 RPS | $0.0208/hr)</option>
+              <option value="t3.medium">t3.medium (200 RPS | $0.0416/hr)</option>
+              <option value="c5.large">c5.large (500 RPS | $0.0850/hr)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="select-ami">Machine Image (AMI)</label>
+            <select id="select-ami" class="form-select">
+              <option value="ami-al2023">Amazon Linux 2023 (ami-0c7217cdde317cfec)</option>
+              <option value="ami-ubuntu24">Ubuntu 24.04 LTS (ami-0e86e20dae9224db8)</option>
+              <option value="ami-ecs-opt">ECS-Optimized Amazon Linux 2 (ami-062e5b8)</option>
+            </select>
+          </div>
+        </section>
+
+        <!-- Capacity Settings -->
+        <section class="config-section">
+          <div class="section-title">Capacity Boundaries</div>
+          <div class="grid-3col">
+            <div class="form-group">
+              <label for="input-min-size">Min</label>
+              <input type="number" id="input-min-size" class="form-input" min="1" max="12" value="2">
+            </div>
+            <div class="form-group">
+              <label for="input-desired-size">Desired</label>
+              <input type="number" id="input-desired-size" class="form-input" min="1" max="12" value="3">
+            </div>
+            <div class="form-group">
+              <label for="input-max-size">Max</label>
+              <input type="number" id="input-max-size" class="form-input" min="1" max="15" value="9">
+            </div>
+          </div>
+          <div class="form-group">
+            <div class="label-with-val">
+              <label for="input-cooldown">Cooldown Period</label>
+              <span class="font-mono text-muted" id="val-cooldown">20s</span>
+            </div>
+            <input type="range" id="input-cooldown" class="form-range" min="5" max="60" step="5" value="20">
+            <div class="cooldown-timer-bar">
+              <div class="cooldown-progress" id="cooldown-progress-bar"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Scaling Policy Section -->
+        <section class="config-section">
+          <div class="section-title">Dynamic Scaling Policy</div>
+          <div class="radio-tab-group">
+            <label class="radio-tab">
+              <input type="radio" name="scaling-policy-type" value="target-tracking" checked>
+              <span>Target Tracking</span>
+            </label>
+            <label class="radio-tab">
+              <input type="radio" name="scaling-policy-type" value="step-scaling">
+              <span>Step Scaling</span>
+            </label>
+            <label class="radio-tab">
+              <input type="radio" name="scaling-policy-type" value="disabled">
+              <span>Manual</span>
+            </label>
+          </div>
+
+          <!-- Target Tracking Sub-panel -->
+          <div id="panel-target-tracking" class="policy-subpanel">
+            <div class="form-group">
+              <div class="label-with-val">
+                <label for="input-target-cpu">Target Average CPU</label>
+                <span class="font-mono text-accent" id="val-target-cpu">50%</span>
+              </div>
+              <input type="range" id="input-target-cpu" class="form-range" min="20" max="90" step="5" value="50">
+              <span class="helper-text">ASG adds or removes instances dynamically to hold fleet average CPU near target.</span>
+            </div>
+          </div>
+
+          <!-- Step Scaling Sub-panel -->
+          <div id="panel-step-scaling" class="policy-subpanel hidden">
+            <div class="step-rule-list font-mono">
+              <div class="step-rule step-scale-out">
+                <span>CPU &gt; 85%</span>
+                <span class="text-danger">+4 instances</span>
+              </div>
+              <div class="step-rule step-scale-out">
+                <span>CPU &gt; 70%</span>
+                <span class="text-accent">+2 instances</span>
+              </div>
+              <div class="step-rule step-scale-in">
+                <span>CPU &lt; 25%</span>
+                <span class="text-teal">-1 instance</span>
+              </div>
+            </div>
+            <span class="helper-text">Applies discrete instance adjustments based on breach severity.</span>
+          </div>
+        </section>
+
+        <!-- Manual Actions -->
+        <section class="config-section">
+          <div class="section-title">Manual Instance Management</div>
+          <div class="btn-group-2">
+            <button class="btn btn-outline btn-sm" id="btn-launch-manual">
+              + Launch EC2
+            </button>
+            <button class="btn btn-outline btn-sm" id="btn-terminate-oldest">
+              - Terminate EC2
+            </button>
+          </div>
+        </section>
+
+        <!-- Traffic Generator Slider -->
+        <section class="config-section traffic-section">
+          <div class="section-title">
+            <span>Inbound Traffic Generator</span>
+            <span class="badge badge-amber" id="traffic-indicator">Normal</span>
+          </div>
+          <div class="traffic-slider-wrapper">
+            <div class="label-with-val">
+              <label for="input-traffic-slider">Inbound Load</label>
+              <span class="font-mono text-bold text-accent" id="traffic-display">300 RPS</span>
+            </div>
+            <input type="range" id="input-traffic-slider" class="form-range slider-traffic" min="0" max="2000" step="25" value="300">
+          </div>
+          <div class="traffic-presets">
+            <button class="preset-btn" data-rps="0">0 (Idle)</button>
+            <button class="preset-btn active" data-rps="300">300 (Low)</button>
+            <button class="preset-btn" data-rps="700">700 (Med)</button>
+            <button class="preset-btn" data-rps="1300">1.3k (High)</button>
+            <button class="preset-btn" data-rps="1900">1.9k (Surge)</button>
+          </div>
+        </section>
+      </aside>
+
+      <!-- CENTER DISPLAY: APPLICATION LOAD BALANCER & DATA CENTER FLOOR -->
+      <div class="center-stage">
+        <!-- POLICY RACE CONTAINER (Visible when Policy Race is enabled) -->
+        <div id="policy-race-arena" class="policy-race-container hidden">
+          <div class="race-header">
+            <div class="race-title">
+              <span class="badge badge-plus">FleetWatch+ Novel Enhancement</span>
+              <h3>Policy Race Arena: Real-time ASG Comparative Benchmark</h3>
+            </div>
+            <div class="race-timer font-mono" id="race-timer">Race Running: 00:00</div>
+          </div>
+          <div class="race-scoreboard">
+            <!-- ASG-A Scorecard -->
+            <div class="race-card" id="race-card-a">
+              <div class="race-card-header">
+                <div class="asg-tag tag-a">ASG-A</div>
+                <div class="asg-policy-name" id="race-policy-a-name">Target Tracking (50%)</div>
+                <div class="winner-badge hidden" id="winner-badge-a">🏆 WINNER</div>
+              </div>
+              <div class="race-stats-grid">
+                <div class="rstat">
+                  <div class="rlabel">COST</div>
+                  <div class="rval font-mono" id="race-cost-a">$0.0000</div>
+                </div>
+                <div class="rstat">
+                  <div class="rlabel">DROPPED (503)</div>
+                  <div class="rval font-mono text-danger" id="race-dropped-a">0</div>
+                </div>
+                <div class="rstat">
+                  <div class="rlabel">AVG CPU</div>
+                  <div class="rval font-mono" id="race-cpu-a">0%</div>
+                </div>
+                <div class="rstat">
+                  <div class="rlabel">INSTANCES</div>
+                  <div class="rval font-mono" id="race-inst-a">3</div>
+                </div>
+              </div>
+              <div class="wrongness-meter">
+                <div class="wrongness-label">Cost of Being Wrong: <span id="race-penalty-a" class="font-mono">$0.00</span></div>
+                <div class="wrongness-bar-bg">
+                  <div class="wrongness-bar" id="race-bar-a" style="width: 0%;"></div>
+                </div>
+                <div class="meter-subtext">Wasted Idle Capacity + Lost Revenue Penalty ($0.0001/drop)</div>
+              </div>
+            </div>
+
+            <!-- VS Badge -->
+            <div class="race-vs">VS</div>
+
+            <!-- ASG-B Scorecard -->
+            <div class="race-card" id="race-card-b">
+              <div class="race-card-header">
+                <div class="asg-tag tag-b">ASG-B</div>
+                <div class="asg-policy-name" id="race-policy-b-name">Step Scaling (70%/85%)</div>
+                <div class="winner-badge hidden" id="winner-badge-b">🏆 WINNER</div>
+              </div>
+              <div class="race-stats-grid">
+                <div class="rstat">
+                  <div class="rlabel">COST</div>
+                  <div class="rval font-mono" id="race-cost-b">$0.0000</div>
+                </div>
+                <div class="rstat">
+                  <div class="rlabel">DROPPED (503)</div>
+                  <div class="rval font-mono text-danger" id="race-dropped-b">0</div>
+                </div>
+                <div class="rstat">
+                  <div class="rlabel">AVG CPU</div>
+                  <div class="rval font-mono" id="race-cpu-b">0%</div>
+                </div>
+                <div class="rstat">
+                  <div class="rlabel">INSTANCES</div>
+                  <div class="rval font-mono" id="race-inst-b">3</div>
+                </div>
+              </div>
+              <div class="wrongness-meter">
+                <div class="wrongness-label">Cost of Being Wrong: <span id="race-penalty-b" class="font-mono">$0.00</span></div>
+                <div class="wrongness-bar-bg">
+                  <div class="wrongness-bar" id="race-bar-b" style="width: 0%;"></div>
+                </div>
+                <div class="meter-subtext">Wasted Idle Capacity + Lost Revenue Penalty ($0.0001/drop)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ALB Architecture View (Top of Floor) -->
+        <div class="alb-container">
+          <div class="alb-node">
+            <div class="alb-icon-ring">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 14h6m8 0h2M4 10h16M4 6h16M4 18h16"/>
+                <circle cx="12" cy="14" r="2"/>
+              </svg>
+            </div>
+            <div class="alb-info">
+              <div class="alb-title font-mono">app-alb-internet-facing.ap-south-1.elb.amazonaws.com</div>
+              <div class="alb-badges">
+                <span class="badge badge-teal" id="alb-state-badge">Active (Healthy)</span>
+                <span class="alb-substat font-mono">Routing: Cross-Zone Round Robin</span>
+                <span class="alb-substat font-mono" id="alb-active-targets">3 Targets Registered</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Canvas Flow Animation Layer for Request Streams -->
+        <div class="traffic-canvas-wrapper">
+          <canvas id="traffic-canvas"></canvas>
+        </div>
+
+        <!-- DATA CENTER FLOOR: 3 AZ COLUMNS -->
+        <div class="dc-floor">
+          <!-- Availability Zone 1a -->
+          <div class="az-column" id="az-ap-south-1a" data-az="ap-south-1a">
+            <div class="az-header">
+              <div class="az-title-row">
+                <span class="az-pulse-dot" id="dot-az-1a"></span>
+                <span class="az-name font-mono">ap-south-1a</span>
+              </div>
+              <span class="az-instance-count font-mono" id="count-az-1a">1 instance</span>
+            </div>
+            <div class="az-rack-slot" id="rack-ap-south-1a">
+              <!-- EC2 Rack Cards Rendered Here Dynamically -->
+            </div>
+          </div>
+
+          <!-- Availability Zone 1b -->
+          <div class="az-column" id="az-ap-south-1b" data-az="ap-south-1b">
+            <div class="az-header">
+              <div class="az-title-row">
+                <span class="az-pulse-dot" id="dot-az-1b"></span>
+                <span class="az-name font-mono">ap-south-1b</span>
+              </div>
+              <span class="az-instance-count font-mono" id="count-az-1b">1 instance</span>
+            </div>
+            <div class="az-rack-slot" id="rack-ap-south-1b">
+              <!-- EC2 Rack Cards Rendered Here Dynamically -->
+            </div>
+          </div>
+
+          <!-- Availability Zone 1c -->
+          <div class="az-column" id="az-ap-south-1c" data-az="ap-south-1c">
+            <div class="az-header">
+              <div class="az-title-row">
+                <span class="az-pulse-dot" id="dot-az-1c"></span>
+                <span class="az-name font-mono">ap-south-1c</span>
+              </div>
+              <span class="az-instance-count font-mono" id="count-az-1c">1 instance</span>
+            </div>
+            <div class="az-rack-slot" id="rack-ap-south-1c">
+              <!-- EC2 Rack Cards Rendered Here Dynamically -->
+            </div>
+          </div>
+        </div>
+
+        <!-- CLOUDWATCH METRICS & TELEMETRY PANEL -->
+        <div class="metrics-stage">
+          <div class="metrics-header">
+            <div class="metrics-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 3v18h18"/>
+                <path d="m19 9-5 5-4-4-3 3"/>
+              </svg>
+              <span>CloudWatch Metrics &bull; AWS/EC2 CPUUtilization &bull; 60s Live Window</span>
+            </div>
+            <div class="metrics-status-bar">
+              <span class="alarm-pill ok font-mono" id="cw-alarm-badge">ALARM: OK</span>
+              <span class="font-mono text-muted">Fleet Avg CPU: <strong id="cw-avg-cpu" class="text-accent">0%</strong></span>
+              <span class="font-mono text-muted">Alarm Threshold: <strong id="cw-alarm-threshold" class="text-danger">75%</strong></span>
+            </div>
+          </div>
+          <div class="chart-wrapper">
+            <canvas id="cloudwatch-chart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT PANEL: CHAOS ENGINEERING & ARCHITECTURE LOGS -->
+      <aside class="panel chaos-panel">
+        <div class="panel-header">
+          <h2>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>
+            </svg>
+            Chaos Engineering
+          </h2>
+          <span class="badge badge-plus">FleetWatch+</span>
+        </div>
+
+        <!-- Chaos Attack Actions -->
+        <section class="chaos-actions-section">
+          <p class="chaos-desc">Inject simulated cloud outages to test resilience, auto-recovery & ALB rerouting.</p>
+          
+          <button class="btn btn-chaos btn-spike" id="btn-chaos-spike">
+            <div class="btn-content">
+              <span class="icon">⚡</span>
+              <div class="btn-text">
+                <strong>Traffic Spike (5x for 30s)</strong>
+                <small>Simulate viral traffic surge</small>
+              </div>
+            </div>
+            <span class="chaos-pill" id="pill-spike-timer">30s</span>
+          </button>
+
+          <button class="btn btn-chaos btn-kill-inst" id="btn-chaos-kill-inst">
+            <div class="btn-content">
+              <span class="icon">💥</span>
+              <div class="btn-text">
+                <strong>Kill Random Instance</strong>
+                <small>Trigger instant host hardware crash</small>
+              </div>
+            </div>
+          </button>
+
+          <div class="az-outage-group">
+            <div class="az-outage-label">Kill Entire Availability Zone:</div>
+            <div class="btn-group-3">
+              <button class="btn btn-chaos-az" data-az="ap-south-1a">AZ 1a</button>
+              <button class="btn btn-chaos-az" data-az="ap-south-1b">AZ 1b</button>
+              <button class="btn btn-chaos-az" data-az="ap-south-1c">AZ 1c</button>
+            </div>
+          </div>
+
+          <button class="btn btn-heal" id="btn-chaos-heal">
+            <span class="icon">🩺</span> Heal & Restore All AZs
+          </button>
+        </section>
+
+        <!-- Recovery Stats Card -->
+        <section class="recovery-stats-card">
+          <div class="stat-row">
+            <span class="stat-label">RESILIENCE SCORE</span>
+            <span class="stat-value font-mono text-teal" id="stat-resilience">100%</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">LAST FAILURE DURATION</span>
+            <span class="stat-value font-mono" id="stat-last-failure">--</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">RECOVERY TIME (MTTR)</span>
+            <span class="stat-value font-mono text-accent" id="stat-recovery-time">0.0s</span>
+          </div>
+        </section>
+
+        <!-- Live Event Log -->
+        <section class="event-log-section">
+          <div class="log-header">
+            <span>Architecture Event Stream</span>
+            <button class="btn-link" id="btn-clear-logs">Clear</button>
+          </div>
+          <div class="event-log-feed" id="event-log-feed">
+            <!-- Event logs appended here dynamically -->
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <!-- EC2 VS FLEETWATCH SLIDE-IN UNDERSTANDING DRAWER -->
+    <div id="drawer-overlay" class="drawer-overlay hidden"></div>
+    <aside id="understanding-drawer" class="understanding-drawer">
+      <div class="drawer-header">
+        <div class="drawer-title">
+          <span class="badge badge-aws">Curriculum Reference</span>
+          <h2>EC2 vs FleetWatch: Architecture Deep-Dive</h2>
+        </div>
+        <button class="btn-close-drawer" id="btn-close-drawer" aria-label="Close Drawer">&times;</button>
+      </div>
+      <div class="drawer-body">
+        <div class="drawer-intro">
+          <p>This reference details the architectural parity between <strong>Amazon Web Services (AWS)</strong> production infrastructure and the <strong>FleetWatch</strong> educational simulation engine.</p>
+        </div>
+
+        <div class="comparison-accordion">
+          <!-- Item 1 -->
+          <div class="comp-item">
+            <div class="comp-header">
+              <h3>1. EC2 Instance Lifecycle & Provisioning</h3>
+              <span class="comp-tag">Compute</span>
+            </div>
+            <div class="comp-grid">
+              <div class="comp-box aws-box">
+                <h4>Real AWS EC2</h4>
+                <p>Instances transition through <code>pending</code> (hypervisor allocating hardware & booting guest OS, 30s-120s), <code>running</code>, <code>stopping</code>, <code>stopped</code>, <code>shutting-down</code>, and <code>terminated</code>.</p>
+              </div>
+              <div class="comp-box fleet-box">
+                <h4>FleetWatch Simulator</h4>
+                <p>Simulates boot time (~3s scaled to tick speed). Instances transition faithfully across all 6 lifecycle states with realistic status checks and hourly cost accrual per tick.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Item 2 -->
+          <div class="comp-item">
+            <div class="comp-header">
+              <h3>2. Multi-AZ High Availability</h3>
+              <span class="comp-tag">Resilience</span>
+            </div>
+            <div class="comp-grid">
+              <div class="comp-box aws-box">
+                <h4>Real AWS EC2</h4>
+                <p>Spreads instances across physically isolated data centers with independent power, cooling, and networking within a region (e.g., <code>ap-south-1a/b/c</code>).</p>
+              </div>
+              <div class="comp-box fleet-box">
+                <h4>FleetWatch Simulator</h4>
+                <p>Maintains 3 distinct AZ racks. The ASG uses round-robin capacity balancing to ensure equal distribution across all non-impaired AZs.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Item 3 -->
+          <div class="comp-item">
+            <div class="comp-header">
+              <h3>3. Auto Scaling Group (ASG) Min / Desired / Max</h3>
+              <span class="comp-tag">Elasticity</span>
+            </div>
+            <div class="comp-grid">
+              <div class="comp-box aws-box">
+                <h4>Real AWS EC2</h4>
+                <p>Maintains instance capacity bounds. Automatically terminates unhealthy instances and launches replacements to maintain desired count while respecting min/max constraints.</p>
+              </div>
+              <div class="comp-box fleet-box">
+                <h4>FleetWatch Simulator</h4>
+                <p>Every tick monitors healthy instances. If an instance crashes or stops, the ASG launches a replacement in the least-populated AZ to preserve desired capacity.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Item 4 -->
+          <div class="comp-item">
+            <div class="comp-header">
+              <h3>4. Target Tracking vs Step Scaling Policies</h3>
+              <span class="comp-tag">Auto Scaling</span>
+            </div>
+            <div class="comp-grid">
+              <div class="comp-box aws-box">
+                <h4>Real AWS EC2</h4>
+                <p><strong>Target Tracking:</strong> calculates capacity proportional to metric gap <code>(FleetCPU / TargetCPU * CurrentSize)</code>. <strong>Step Scaling:</strong> executes discrete step adjustments based on CloudWatch alarm breach magnitude.</p>
+              </div>
+              <div class="comp-box fleet-box">
+                <h4>FleetWatch Simulator</h4>
+                <p>Implements proportional Target Tracking formulas and discrete multi-tier Step Scaling rules with live cooldown enforcement.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Item 5 -->
+          <div class="comp-item">
+            <div class="comp-header">
+              <h3>5. Application Load Balancer (ALB) & 503 Spillovers</h3>
+              <span class="comp-tag">Networking</span>
+            </div>
+            <div class="comp-grid">
+              <div class="comp-box aws-box">
+                <h4>Real AWS EC2</h4>
+                <p>Evaluates target health checks. Distributes HTTP traffic exclusively across healthy targets. If total capacity is saturated, responses return <code>HTTP 503 Service Unavailable</code>.</p>
+              </div>
+              <div class="comp-box fleet-box">
+                <h4>FleetWatch Simulator</h4>
+                <p>Distributes incoming RPS across running targets only. Excess traffic beyond aggregate capacity triggers dropped request counters and visual red particles.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Item 6 -->
+          <div class="comp-item">
+            <div class="comp-header">
+              <h3>6. CloudWatch Telemetry & Alarm States</h3>
+              <span class="comp-tag">Observability</span>
+            </div>
+            <div class="comp-grid">
+              <div class="comp-box aws-box">
+                <h4>Real AWS EC2</h4>
+                <p>Collects 1-minute CPU metrics per instance and average fleet utilization. Triggers CloudWatch Alarms when metrics breach thresholds for consecutive periods.</p>
+              </div>
+              <div class="comp-box fleet-box">
+                <h4>FleetWatch Simulator</h4>
+                <p>Renders a live 60-second telemetry canvas showing real-time instance loads, fleet average, alarm thresholds, and instantaneous alarm triggers.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- What is NOT Simulated -->
+          <div class="comp-item not-simulated-item">
+            <div class="comp-header">
+              <h3>⚠️ Architectural Constraints & Non-Simulated Features</h3>
+              <span class="comp-tag tag-warn">Out of Scope</span>
+            </div>
+            <div class="not-sim-list">
+              <ul>
+                <li><strong>VPC & Subnet Networking:</strong> No packet-level CIDR routing, NAT Gateways, Internet Gateways, or ENI IP allocation.</li>
+                <li><strong>Storage Volumes:</strong> No EBS IOPS bursting, gp3 throughput throttling, or snapshot restoration latencies.</li>
+                <li><strong>Security Groups & NACLs:</strong> No stateful firewall packet filtering or IAM instance profile authorization checks.</li>
+                <li><strong>Warm Pools & Predictive Scaling:</strong> Warm pool pre-initialized states and Machine Learning-based predictive scaling algorithms are omitted.</li>
+                <li><strong>Billing Granularity:</strong> Real AWS bills per second with a 60-second minimum; FleetWatch calculates exact fractional cost per 500ms simulation tick.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- TOAST CONTAINER FOR FLOATING NOTIFICATIONS -->
+    <div id="toast-container" class="toast-container"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
