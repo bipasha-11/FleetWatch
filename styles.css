@@ -108,19 +108,20 @@ html, body {
 /* ==========================================================================
    TOP BAR
    ========================================================================== */
+
 .top-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
   padding: 0.75rem 1.25rem;
-  background: rgba(20, 31, 42, 0.85);
+  background: rgba(20, 31, 42, 0.95);
   border-bottom: 1px solid var(--border-color);
-  backdrop-filter: blur(12px);
-  position: sticky;
-  top: 0;
+  position: relative;
+  top: auto;
   z-index: 50;
 }
+
 
 .brand-section {
   display: flex;
