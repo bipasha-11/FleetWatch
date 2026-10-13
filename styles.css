@@ -109,17 +109,20 @@ html, body {
    TOP BAR
    ========================================================================== */
 
+
 .top-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 1.25rem;
-  background: rgba(20, 31, 42, 0.95);
-  border-bottom: 1px solid var(--border-color);
+  flex-wrap: nowrap;
+  gap: 12px;
+  padding: 8px 16px;
+  min-height: 56px;
+  height: auto;
   position: relative;
   top: auto;
   z-index: 50;
+  overflow-x: auto;
 }
 
 
@@ -183,11 +186,13 @@ html, body {
 }
 
 /* Top Metric Pills */
+
 .top-metrics {
   display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
+  gap: 8px;
+  flex-wrap: nowrap;
 }
 
 .metric-pill {
